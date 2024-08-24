@@ -11,20 +11,7 @@
         "src": "/(.*)",
         "dest": "/index.js"
       }
-    ],
-    "rewrites": [
-      {
-        "source": "/api/user",
-        "destination": "/api/user.js"
-      },
-      {
-        "source": "/blog/:slug",
-        "destination": "/api/blog.js?slug=:slug"
-      },
-      {
-        "source": "/old-path",
-        "destination": "/new-path"
-      }
     ]
+   
   }
   
