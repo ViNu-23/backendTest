@@ -25,6 +25,10 @@ cloudinary.config({
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
+app.get("/",(req, res) => {
+  res.send("basic test");
+})
+
 app.post("/signup", async (req, res) => {
   let { name, email, location, password } = req.body;
   let tryEmail = await userModel.findOne({ email });
