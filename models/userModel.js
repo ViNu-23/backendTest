@@ -3,7 +3,7 @@ require("dotenv").config();
 
 const deployment = `mongodb+srv://vijayvinu46:${process.env.DB_KEY}@cluster0.py4vl.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
-mongoose.connect(`mongodb://127.0.0.1:27017/testPostman-1`);
+mongoose.connect(deployment);
 
 const userSchema = mongoose.Schema({
   avatar: {
