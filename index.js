@@ -8,7 +8,7 @@ require("dotenv").config();
 const cloudinary = require("cloudinary").v2;
 const nodemailer = require("nodemailer");
 const otpGenerator = require("otp-generator");
-const session = require("express-session");
+// const session = require("express-session");
 const cors = require('cors');
 
 const userModel = require("./models/userModel");
@@ -20,14 +20,14 @@ const jwtKey = process.env.JWT_KEY;
 app.use(express.json());
 app.use(cookieParser());
 
-app.use(
-  session({
-    secret: process.env.SESSION_SECRET, // Set this in your .env
-    resave: false,
-    saveUninitialized: true,
-    cookie: { secure: false }, // Set to true if using HTTPS
-  })
-);
+// app.use(
+//   session({
+//     secret: process.env.SESSION_SECRET, // Set this in your .env
+//     resave: false,
+//     saveUninitialized: true,
+//     cookie: { secure: false }, // Set to true if using HTTPS
+//   })
+// );
 
 const corsOptions = {
   origin: 'https://blog-frontend-vijay.vercel.app/',
@@ -108,40 +108,40 @@ app.post("/signup", async (req, res) => {
   }
 });
 
-app.post("/verifyotp", async (req, res) => {
-  const { otp } = req.body;
+// app.post("/verifyotp", async (req, res) => {
+//   const { otp } = req.body;
 
-  // Retrieve the temporarily stored user data
-  const tempUser = req.session.tempUser; // Example using session
+//   // Retrieve the temporarily stored user data
+//   const tempUser = req.session.tempUser; // Example using session
 
-  if (!tempUser) {
-    return res.status(400).send("No signup process found");
-  }
+//   if (!tempUser) {
+//     return res.status(400).send("No signup process found");
+//   }
 
-  if (tempUser.otp !== otp) {
-    return res.status(400).send("Invalid OTP");
-  }
+//   if (tempUser.otp !== otp) {
+//     return res.status(400).send("Invalid OTP");
+//   }
 
-  try {
-    // Create the user in the database after successful OTP verification
-    const user = await userModel.create({
-      name: tempUser.name,
-      email: tempUser.email,
-      location: tempUser.location,
-      password: bcrypt.hashSync(tempUser.password, bcryptSalt),
-      isVerified: true,
-    });
+//   try {
+//     // Create the user in the database after successful OTP verification
+//     const user = await userModel.create({
+//       name: tempUser.name,
+//       email: tempUser.email,
+//       location: tempUser.location,
+//       password: bcrypt.hashSync(tempUser.password, bcryptSalt),
+//       isVerified: true,
+//     });
 
-    // Clear the temporary user data
-    req.session.tempUser = null;
-    return res
-      .status(201)
-      .json({ message: "Email verified and user created successfully!", user });
-  } catch (error) {
-    console.error(error);
-    res.status(500).send("Internal Server Error");
-  }
-});
+//     // Clear the temporary user data
+//     req.session.tempUser = null;
+//     return res
+//       .status(201)
+//       .json({ message: "Email verified and user created successfully!", user });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).send("Internal Server Error");
+//   }
+// });
  
 app.post("/login", async (req, res) => {
   let { email, password } = req.body;
@@ -169,90 +169,90 @@ app.post("/login", async (req, res) => {
   }
 });
 
-app.post("/forgotpassword", async (req, res) => {
-  const { email } = req.body;
+// app.post("/forgotpassword", async (req, res) => {
+//   const { email } = req.body;
 
-  const user = await userModel.findOne({ email });
-  if (!user) {
-    return res.status(404).json({ message: "User email not found" });
-  }
+//   const user = await userModel.findOne({ email });
+//   if (!user) {
+//     return res.status(404).json({ message: "User email not found" });
+//   }
 
-  try {
-    const otp = otpGenerator.generate(6, {
-      digits: true,
-      lowerCaseAlphabets: false,
-      upperCaseAlphabets: false,
-      specialChars: false,
-    });
+//   try {
+//     const otp = otpGenerator.generate(6, {
+//       digits: true,
+//       lowerCaseAlphabets: false,
+//       upperCaseAlphabets: false,
+//       specialChars: false,
+//     });
 
-    // Store the OTP and email temporarily in a session or cache as a single object
-    req.session.resetPasswordData = {
-      otp,
-      email
-    };
+//     // Store the OTP and email temporarily in a session or cache as a single object
+//     req.session.resetPasswordData = {
+//       otp,
+//       email
+//     };
 
-    // Send the OTP to the user's email
-    const mailOptions = {
-      from: process.env.EMAIL_USER,
-      to: email,
-      subject: "Reset Your Password - OTP Code Inside",
-      text: `Dear ${user.name},\n\nYou have requested to reset your password. Please use the following One-Time Password (OTP) to proceed:\n\n🔑 Your OTP Code: ${otp}\n\nPlease enter this code within the next 10 minutes.\n\nIf you did not request this, please ignore this email.\n\nBest regards,\nThe [Your Company] Team`,
-    };
+//     // Send the OTP to the user's email
+//     const mailOptions = {
+//       from: process.env.EMAIL_USER,
+//       to: email,
+//       subject: "Reset Your Password - OTP Code Inside",
+//       text: `Dear ${user.name},\n\nYou have requested to reset your password. Please use the following One-Time Password (OTP) to proceed:\n\n🔑 Your OTP Code: ${otp}\n\nPlease enter this code within the next 10 minutes.\n\nIf you did not request this, please ignore this email.\n\nBest regards,\nThe [Your Company] Team`,
+//     };
 
-    transporter.sendMail(mailOptions, (error) => {
-      if (error) {
-        console.error("Error sending email:", error);
-        return res.status(500).json({ message: "Failed to send OTP email" });
-      }
+//     transporter.sendMail(mailOptions, (error) => {
+//       if (error) {
+//         console.error("Error sending email:", error);
+//         return res.status(500).json({ message: "Failed to send OTP email" });
+//       }
 
-      res.status(200).json({ message: "OTP sent to your email. Please verify to reset your password." });
-    });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Internal Server Error" });
-  }
-});
+//       res.status(200).json({ message: "OTP sent to your email. Please verify to reset your password." });
+//     });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: "Internal Server Error" });
+//   }
+// });
 
-app.post("/validateotp", async (req, res) => {
-  const { otp } = req.body;
+// app.post("/validateotp", async (req, res) => {
+//   const { otp } = req.body;
 
-  const resetPasswordData = req.session.resetPasswordData;
+//   const resetPasswordData = req.session.resetPasswordData;
 
-  if (!resetPasswordData) {
-    return res.status(400).json({ message: "No reset process found" });
-  }
+//   if (!resetPasswordData) {
+//     return res.status(400).json({ message: "No reset process found" });
+//   }
 
-  if (resetPasswordData.otp !== otp) {
-    return res.status(400).json({ message: "Invalid OTP" });
-  }
+//   if (resetPasswordData.otp !== otp) {
+//     return res.status(400).json({ message: "Invalid OTP" });
+//   }
 
-  res.status(200).json({ message: "OTP validated successfully. You can now reset your password." });
-});
+//   res.status(200).json({ message: "OTP validated successfully. You can now reset your password." });
+// });
 
-app.post("/setnewpassword", async (req, res) => {
-  const { newPassword } = req.body;
+// app.post("/setnewpassword", async (req, res) => {
+//   const { newPassword } = req.body;
 
-  const resetPasswordData = req.session.resetPasswordData;
+//   const resetPasswordData = req.session.resetPasswordData;
 
-  if (!resetPasswordData) {
-    return res.status(400).json({ message: "No reset process found" });
-  }
+//   if (!resetPasswordData) {
+//     return res.status(400).json({ message: "No reset process found" });
+//   }
 
-  try {
-    const hashedPassword = bcrypt.hashSync(newPassword, bcryptSalt);
+//   try {
+//     const hashedPassword = bcrypt.hashSync(newPassword, bcryptSalt);
 
-    // Update the user's password in the database
-    await userModel.updateOne({ email: resetPasswordData.email }, { password: hashedPassword });
+//     // Update the user's password in the database
+//     await userModel.updateOne({ email: resetPasswordData.email }, { password: hashedPassword });
 
-    // Clear the session data
-    req.session.resetPasswordData = null;
+//     // Clear the session data
+//     req.session.resetPasswordData = null;
 
-    res.status(200).json({ message: "Password reset successfully!" });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Internal Server Error" });
-  }
-});
+//     res.status(200).json({ message: "Password reset successfully!" });
+//   } catch (error) {
+//     console.error(error);
+//     res.status(500).json({ message: "Internal Server Error" });
+//   }
+// });
 
 app.get("/edituser", async (req, res) => {
   const { token } = req.cookies;
