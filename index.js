@@ -8,7 +8,7 @@ require("dotenv").config();
 const cloudinary = require("cloudinary").v2;
 const nodemailer = require("nodemailer");
 const otpGenerator = require("otp-generator");
-// const session = require("express-session");
+const session = require("express-session");
 const cors = require('cors');
 
 const userModel = require("./models/userModel");
@@ -20,14 +20,14 @@ const jwtKey = process.env.JWT_KEY;
 app.use(express.json());
 app.use(cookieParser());
 
-// app.use(
-//   session({
-//     secret: process.env.SESSION_SECRET, // Set this in your .env
-//     resave: false,
-//     saveUninitialized: true,
-//     cookie: { secure: false }, // Set to true if using HTTPS
-//   })
-// );
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET, // Set this in your .env
+    resave: false,
+    saveUninitialized: true,
+    cookie: { secure: false }, // Set to true if using HTTPS
+  })
+);
 
 const corsOptions = {
   origin: 'https://blog-frontend-vijay.vercel.app/',
@@ -108,40 +108,40 @@ app.post("/signup", async (req, res) => {
   }
 });
 
-// app.post("/verifyotp", async (req, res) => {
-//   const { otp } = req.body;
+app.post("/verifyotp", async (req, res) => {
+  const { otp } = req.body;
 
-//   // Retrieve the temporarily stored user data
-//   const tempUser = req.session.tempUser; // Example using session
+  // Retrieve the temporarily stored user data
+  const tempUser = req.session.tempUser; // Example using session
 
-//   if (!tempUser) {
-//     return res.status(400).send("No signup process found");
-//   }
+  if (!tempUser) {
+    return res.status(400).send("No signup process found");
+  }
 
-//   if (tempUser.otp !== otp) {
-//     return res.status(400).send("Invalid OTP");
-//   }
+  if (tempUser.otp !== otp) {
+    return res.status(400).send("Invalid OTP");
+  }
 
-//   try {
-//     // Create the user in the database after successful OTP verification
-//     const user = await userModel.create({
-//       name: tempUser.name,
-//       email: tempUser.email,
-//       location: tempUser.location,
-//       password: bcrypt.hashSync(tempUser.password, bcryptSalt),
-//       isVerified: true,
-//     });
+  try {
+    // Create the user in the database after successful OTP verification
+    const user = await userModel.create({
+      name: tempUser.name,
+      email: tempUser.email,
+      location: tempUser.location,
+      password: bcrypt.hashSync(tempUser.password, bcryptSalt),
+      isVerified: true,
+    });
 
-//     // Clear the temporary user data
-//     req.session.tempUser = null;
-//     return res
-//       .status(201)
-//       .json({ message: "Email verified and user created successfully!", user });
-//   } catch (error) {
-//     console.error(error);
-//     res.status(500).send("Internal Server Error");
-//   }
-// });
+    // Clear the temporary user data
+    req.session.tempUser = null;
+    return res
+      .status(201)
+      .json({ message: "Email verified and user created successfully!", user });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Internal Server Error");
+  }
+});
  
 app.post("/login", async (req, res) => {
   let { email, password } = req.body;
