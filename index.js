@@ -85,7 +85,7 @@ app.post("/signup", async (req, res) => {
       from: process.env.EMAIL_USER,
       to: email,
       subject: "Verify Your Email - OTP Code Inside",
-      text: `Dear ${name},\n\nThank you for signing up! To complete your registration, please use the following One-Time Password (OTP) to verify your email address:\n\n🔑 Your OTP Code: ${otp}\n\nPlease enter this code in the verification form within the next 10 minutes to secure your account.\n\nIf you did not initiate this request, please ignore this email.\n\nBest regards,\nThe [Your Company] Team\n\nNeed help? Contact us at [support@yourcompany.com]`,
+      text: `Dear ${name},\n\nThank you for signing up! To complete your registration, please use the following One-Time Password (OTP) to verify your email address:\n\n🔑 Your OTP Code: ${otp}\n\nPlease enter this code in the verification form within the next 10 minutes to secure your account.\n\nIf you did not initiate this request, please ignore this email.`,
     };
 
     // Send OTP email
@@ -196,7 +196,7 @@ app.post("/forgotpassword", async (req, res) => {
       from: process.env.EMAIL_USER,
       to: email,
       subject: "Reset Your Password - OTP Code Inside",
-      text: `Dear ${user.name},\n\nYou have requested to reset your password. Please use the following One-Time Password (OTP) to proceed:\n\n🔑 Your OTP Code: ${otp}\n\nPlease enter this code within the next 10 minutes.\n\nIf you did not request this, please ignore this email.\n\nBest regards,\nThe [Your Company] Team`,
+      text: `Dear ${user.name},\n\nYou have requested to reset your password. Please use the following One-Time Password (OTP) to proceed:\n\n🔑 Your OTP Code: ${otp}\n\nPlease enter this code within the next 10 minutes.\n\nIf you did not request this, please ignore this email.`,
     };
 
     transporter.sendMail(mailOptions, (error) => {
