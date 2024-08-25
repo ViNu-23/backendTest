@@ -32,6 +32,8 @@ const userSchema = mongoose.Schema({
       ref: "post",
     },
   ],
+  isVerified: { type: Boolean, default: false },
+
 });
 
 module.exports = mongoose.model("user", userSchema);

@@ -6,14 +6,45 @@ const cookieParser = require("cookie-parser");
 const jwt = require("jsonwebtoken");
 require("dotenv").config();
 const cloudinary = require("cloudinary").v2;
+const nodemailer = require("nodemailer");
+const otpGenerator = require("otp-generator");
+const session = require("express-session");
+const cors = require('cors');
 
 const userModel = require("./models/userModel");
 const postModel = require("./models/postModel");
+
 const bcryptSalt = bcrypt.genSaltSync(parseInt(process.env.SALT));
 const jwtKey = process.env.JWT_KEY;
 
 app.use(express.json());
 app.use(cookieParser());
+
+app.use(
+  session({
+    secret: process.env.SESSION_SECRET, // Set this in your .env
+    resave: false,
+    saveUninitialized: true,
+    cookie: { secure: false }, // Set to true if using HTTPS
+  })
+);
+
+const corsOptions = {
+  origin: 'https://blogappbyvijay.vercel.app',
+  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+  credentials: true, 
+  optionsSuccessStatus: 204
+};
+
+app.use(cors(corsOptions));
+
+const transporter = nodemailer.createTransport({
+  service: "gmail",
+  auth: {
+    user: process.env.EMAIL_USER,
+    pass: process.env.EMAIL_PASS,
+  },
+});
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -24,43 +55,94 @@ cloudinary.config({
 const storage = multer.memoryStorage();
 const upload = multer({ storage: storage });
 
-app.get("/",(req, res) => {
+app.get("/", (req, res) => {
   res.send("basic test");
-})
+});
 
 app.post("/signup", async (req, res) => {
-  let { name, email, location, password } = req.body;
-  let tryEmail = await userModel.findOne({ email });
-  if (tryEmail) {
-    return res.status(409).send("Email already in use");
-  } else {
-    try {
-      const user = await userModel.create({
-        name,
-        email,
-        location,
-        password: bcrypt.hashSync(password, bcryptSalt),
-      });
+  const { name, email, location, password } = req.body;
 
-      jwt.sign(
-        {
-          name: name,
-          email: email,
-        },
-        jwtKey,
-        {},
-        (err, token) => {
-          if (err) throw err;
-          res.cookie(token).json(user);
-        }
-      );
-    } catch (error) {
-      console.error(error);
-      res.status(500).send("Internal Server Error");
+  try {
+    // Check if the email is already in use
+    let tryEmail = await userModel.findOne({ email });
+    if (tryEmail) {
+      return res.status(409).json({ message: "Email already in use" });
     }
+
+    // Generate a 6-digit OTP
+    const otp = otpGenerator.generate(6, {
+      digits: true,
+      lowerCaseAlphabets: false,
+      upperCaseAlphabets: false,
+      specialChars: false,
+    });
+
+    // Temporarily store user data and OTP
+    const tempUser = { name, email, location, password, otp };
+
+    // Email options
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: "Verify Your Email - OTP Code Inside",
+      text: `Dear ${name},\n\nThank you for signing up! To complete your registration, please use the following One-Time Password (OTP) to verify your email address:\n\n🔑 Your OTP Code: ${otp}\n\nPlease enter this code in the verification form within the next 10 minutes to secure your account.\n\nIf you did not initiate this request, please ignore this email.\n\nBest regards,\nThe [Your Company] Team\n\nNeed help? Contact us at [support@yourcompany.com]`,
+    };
+
+    // Send OTP email
+    transporter.sendMail(mailOptions, (error, info) => {
+      if (error) {
+        return res.status(500).json({ message: "Failed to send OTP email" });
+      }
+      // Store the temporary user in the session
+      req.session.tempUser = tempUser;
+
+      // Respond to the client after email is sent
+      return res.status(201).json({
+        message:
+          "Signup initiated! Please verify your email with the OTP sent.",
+      });
+    });
+  } catch (error) {
+    console.error("Signup Error:", error);
+    return res.status(500).json({ message: "Internal Server Error" });
   }
 });
 
+app.post("/verifyotp", async (req, res) => {
+  const { otp } = req.body;
+
+  // Retrieve the temporarily stored user data
+  const tempUser = req.session.tempUser; // Example using session
+
+  if (!tempUser) {
+    return res.status(400).send("No signup process found");
+  }
+
+  if (tempUser.otp !== otp) {
+    return res.status(400).send("Invalid OTP");
+  }
+
+  try {
+    // Create the user in the database after successful OTP verification
+    const user = await userModel.create({
+      name: tempUser.name,
+      email: tempUser.email,
+      location: tempUser.location,
+      password: bcrypt.hashSync(tempUser.password, bcryptSalt),
+      isVerified: true,
+    });
+
+    // Clear the temporary user data
+    req.session.tempUser = null;
+    return res
+      .status(201)
+      .json({ message: "Email verified and user created successfully!", user });
+  } catch (error) {
+    console.error(error);
+    res.status(500).send("Internal Server Error");
+  }
+});
+ 
 app.post("/login", async (req, res) => {
   let { email, password } = req.body;
   let existUser = await userModel.findOne({ email });
@@ -84,6 +166,91 @@ app.post("/login", async (req, res) => {
     } else {
       res.status(404).send("password miss match");
     }
+  }
+});
+
+app.post("/forgotpassword", async (req, res) => {
+  const { email } = req.body;
+
+  const user = await userModel.findOne({ email });
+  if (!user) {
+    return res.status(404).json({ message: "User email not found" });
+  }
+
+  try {
+    const otp = otpGenerator.generate(6, {
+      digits: true,
+      lowerCaseAlphabets: false,
+      upperCaseAlphabets: false,
+      specialChars: false,
+    });
+
+    // Store the OTP and email temporarily in a session or cache as a single object
+    req.session.resetPasswordData = {
+      otp,
+      email
+    };
+
+    // Send the OTP to the user's email
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: "Reset Your Password - OTP Code Inside",
+      text: `Dear ${user.name},\n\nYou have requested to reset your password. Please use the following One-Time Password (OTP) to proceed:\n\n🔑 Your OTP Code: ${otp}\n\nPlease enter this code within the next 10 minutes.\n\nIf you did not request this, please ignore this email.\n\nBest regards,\nThe [Your Company] Team`,
+    };
+
+    transporter.sendMail(mailOptions, (error) => {
+      if (error) {
+        console.error("Error sending email:", error);
+        return res.status(500).json({ message: "Failed to send OTP email" });
+      }
+
+      res.status(200).json({ message: "OTP sent to your email. Please verify to reset your password." });
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+});
+
+app.post("/validateotp", async (req, res) => {
+  const { otp } = req.body;
+
+  const resetPasswordData = req.session.resetPasswordData;
+
+  if (!resetPasswordData) {
+    return res.status(400).json({ message: "No reset process found" });
+  }
+
+  if (resetPasswordData.otp !== otp) {
+    return res.status(400).json({ message: "Invalid OTP" });
+  }
+
+  res.status(200).json({ message: "OTP validated successfully. You can now reset your password." });
+});
+
+app.post("/setnewpassword", async (req, res) => {
+  const { newPassword } = req.body;
+
+  const resetPasswordData = req.session.resetPasswordData;
+
+  if (!resetPasswordData) {
+    return res.status(400).json({ message: "No reset process found" });
+  }
+
+  try {
+    const hashedPassword = bcrypt.hashSync(newPassword, bcryptSalt);
+
+    // Update the user's password in the database
+    await userModel.updateOne({ email: resetPasswordData.email }, { password: hashedPassword });
+
+    // Clear the session data
+    req.session.resetPasswordData = null;
+
+    res.status(200).json({ message: "Password reset successfully!" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Internal Server Error" });
   }
 });
 
@@ -195,25 +362,28 @@ app.get("/posts", async (req, res) => {
   res.status(200).json({ posts });
 });
 
+app.get("/readpost/:id", async (req, res)=>{
+const {id} = req.params;
+res.send(await postModel.findById(id));  
+})
+
 app.post("/postimage", upload.single("post"), (req, res) => {
   const file = req.file;
-try {
-  cloudinary.uploader
-  .upload_stream({ folder: "post_images" }, async (error, result) => {
-    if (error) {
-      return res
-        .status(500)
-        .send("Upload to Cloudinary failed", error.message);
-    } else {
-      res
-        .status(200)
-        .json({ message: "success", url: result.secure_url });
-    }
-  })
-  .end(file.buffer); 
-} catch (error) {
-  res.status(500).send(error.message);
-}
+  try {
+    cloudinary.uploader
+      .upload_stream({ folder: "post_images" }, async (error, result) => {
+        if (error) {
+          return res
+            .status(500)
+            .send("Upload to Cloudinary failed", error.message);
+        } else {
+          res.status(200).json({ message: "success", url: result.secure_url });
+        }
+      })
+      .end(file.buffer);
+  } catch (error) {
+    res.status(500).send(error.message);
+  }
 });
 
 app.post("/deletepostimage", async (req, res) => {
@@ -229,7 +399,7 @@ app.post("/deletepostimage", async (req, res) => {
     const publicId = publicIdWithExtension.split(".")[0];
 
     const result = await cloudinary.uploader.destroy(`post_images/${publicId}`);
-    
+
     if (result.result !== "ok") {
       return res.status(500).json({ message: "Failed to delete image" });
     }
@@ -266,10 +436,10 @@ app.post("/createpost", async (req, res) => {
   }
 });
 
-app.get("/editpost/:id", async (req, res)=>{
+app.get("/editpost/:id", async (req, res) => {
   const { id } = req.params;
   res.json(await postModel.findById(id));
-})
+});
 
 app.post("/editpost/:id", async (req, res) => {
   const { id } = req.params;
