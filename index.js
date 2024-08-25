@@ -9,8 +9,7 @@ const cloudinary = require("cloudinary").v2;
 
 const userModel = require("./models/userModel");
 const postModel = require("./models/postModel");
-
-const bcryptSalt = bcrypt.genSaltSync(10);
+const bcryptSalt = bcrypt.genSaltSync(parseInt(process.env.SALT));
 const jwtKey = process.env.JWT_KEY;
 
 app.use(express.json());
