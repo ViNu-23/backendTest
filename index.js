@@ -169,49 +169,49 @@ app.post("/login", async (req, res) => {
   }
 });
 
-// app.post("/forgotpassword", async (req, res) => {
-//   const { email } = req.body;
+app.post("/forgotpassword", async (req, res) => {
+  const { email } = req.body;
 
-//   const user = await userModel.findOne({ email });
-//   if (!user) {
-//     return res.status(404).json({ message: "User email not found" });
-//   }
+  const user = await userModel.findOne({ email });
+  if (!user) {
+    return res.status(404).json({ message: "User email not found" });
+  }
 
-//   try {
-//     const otp = otpGenerator.generate(6, {
-//       digits: true,
-//       lowerCaseAlphabets: false,
-//       upperCaseAlphabets: false,
-//       specialChars: false,
-//     });
+  try {
+    const otp = otpGenerator.generate(6, {
+      digits: true,
+      lowerCaseAlphabets: false,
+      upperCaseAlphabets: false,
+      specialChars: false,
+    });
 
-//     // Store the OTP and email temporarily in a session or cache as a single object
-//     req.session.resetPasswordData = {
-//       otp,
-//       email
-//     };
+    // Store the OTP and email temporarily in a session or cache as a single object
+    req.session.resetPasswordData = {
+      otp,
+      email
+    };
 
-//     // Send the OTP to the user's email
-//     const mailOptions = {
-//       from: process.env.EMAIL_USER,
-//       to: email,
-//       subject: "Reset Your Password - OTP Code Inside",
-//       text: `Dear ${user.name},\n\nYou have requested to reset your password. Please use the following One-Time Password (OTP) to proceed:\n\n🔑 Your OTP Code: ${otp}\n\nPlease enter this code within the next 10 minutes.\n\nIf you did not request this, please ignore this email.\n\nBest regards,\nThe [Your Company] Team`,
-//     };
+    // Send the OTP to the user's email
+    const mailOptions = {
+      from: process.env.EMAIL_USER,
+      to: email,
+      subject: "Reset Your Password - OTP Code Inside",
+      text: `Dear ${user.name},\n\nYou have requested to reset your password. Please use the following One-Time Password (OTP) to proceed:\n\n🔑 Your OTP Code: ${otp}\n\nPlease enter this code within the next 10 minutes.\n\nIf you did not request this, please ignore this email.\n\nBest regards,\nThe [Your Company] Team`,
+    };
 
-//     transporter.sendMail(mailOptions, (error) => {
-//       if (error) {
-//         console.error("Error sending email:", error);
-//         return res.status(500).json({ message: "Failed to send OTP email" });
-//       }
+    transporter.sendMail(mailOptions, (error) => {
+      if (error) {
+        console.error("Error sending email:", error);
+        return res.status(500).json({ message: "Failed to send OTP email" });
+      }
 
-//       res.status(200).json({ message: "OTP sent to your email. Please verify to reset your password." });
-//     });
-//   } catch (error) {
-//     console.error(error);
-//     res.status(500).json({ message: "Internal Server Error" });
-//   }
-// });
+      res.status(200).json({ message: "OTP sent to your email. Please verify to reset your password." });
+    });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+});
 
 // app.post("/validateotp", async (req, res) => {
 //   const { otp } = req.body;
