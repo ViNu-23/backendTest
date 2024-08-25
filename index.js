@@ -213,21 +213,21 @@ app.post("/forgotpassword", async (req, res) => {
   }
 });
 
-// app.post("/validateotp", async (req, res) => {
-//   const { otp } = req.body;
+app.post("/validateotp", async (req, res) => {
+  const { otp } = req.body;
 
-//   const resetPasswordData = req.session.resetPasswordData;
+  const resetPasswordData = req.session.resetPasswordData;
 
-//   if (!resetPasswordData) {
-//     return res.status(400).json({ message: "No reset process found" });
-//   }
+  if (!resetPasswordData) {
+    return res.status(400).json({ message: "No reset process found" });
+  }
 
-//   if (resetPasswordData.otp !== otp) {
-//     return res.status(400).json({ message: "Invalid OTP" });
-//   }
+  if (resetPasswordData.otp !== otp) {
+    return res.status(400).json({ message: "Invalid OTP" });
+  }
 
-//   res.status(200).json({ message: "OTP validated successfully. You can now reset your password." });
-// });
+  res.status(200).json({ message: "OTP validated successfully. You can now reset your password." });
+});
 
 // app.post("/setnewpassword", async (req, res) => {
 //   const { newPassword } = req.body;
