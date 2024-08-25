@@ -229,30 +229,30 @@ app.post("/validateotp", async (req, res) => {
   res.status(200).json({ message: "OTP validated successfully. You can now reset your password." });
 });
 
-// app.post("/setnewpassword", async (req, res) => {
-//   const { newPassword } = req.body;
+app.post("/setnewpassword", async (req, res) => {
+  const { newPassword } = req.body;
 
-//   const resetPasswordData = req.session.resetPasswordData;
+  const resetPasswordData = req.session.resetPasswordData;
 
-//   if (!resetPasswordData) {
-//     return res.status(400).json({ message: "No reset process found" });
-//   }
+  if (!resetPasswordData) {
+    return res.status(400).json({ message: "No reset process found" });
+  }
 
-//   try {
-//     const hashedPassword = bcrypt.hashSync(newPassword, bcryptSalt);
+  try {
+    const hashedPassword = bcrypt.hashSync(newPassword, bcryptSalt);
 
-//     // Update the user's password in the database
-//     await userModel.updateOne({ email: resetPasswordData.email }, { password: hashedPassword });
+    // Update the user's password in the database
+    await userModel.updateOne({ email: resetPasswordData.email }, { password: hashedPassword });
 
-//     // Clear the session data
-//     req.session.resetPasswordData = null;
+    // Clear the session data
+    req.session.resetPasswordData = null;
 
-//     res.status(200).json({ message: "Password reset successfully!" });
-//   } catch (error) {
-//     console.error(error);
-//     res.status(500).json({ message: "Internal Server Error" });
-//   }
-// });
+    res.status(200).json({ message: "Password reset successfully!" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+});
 
 app.get("/edituser", async (req, res) => {
   const { token } = req.cookies;
