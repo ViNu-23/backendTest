@@ -30,9 +30,9 @@ app.use(
 );
 
 const corsOptions = {
-  origin: ['https://blog-frontend-vijay.vercel.app/','http://localhost:5173/'],
+  origin: ['https://blog-frontend-vijay.vercel.app', 'http://localhost:5173'],
   methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
-  credentials: true, 
+  credentials: true,
   optionsSuccessStatus: 204
 };
 
