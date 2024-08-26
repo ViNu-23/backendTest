@@ -359,7 +359,7 @@ app.post("/setavatar", upload.single("avatar"), (req, res) => {
 
 app.get("/posts", async (req, res) => {
   const posts = await postModel.find().populate("owner");
-  res.status(200).json({ posts });
+  res.status(200).json(posts);
 });
 
 app.get("/readpost/:id", async (req, res)=>{
