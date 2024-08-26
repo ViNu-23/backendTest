@@ -412,7 +412,7 @@ app.post("/deletepostimage", async (req, res) => {
 
 app.post("/createpost", async (req, res) => {
   const { token } = req.cookies;
-  const { title, image, description } = req.body;
+  const { title, image, description,category } = req.body;
   if (token) {
     jwt.verify(token, jwtKey, {}, async (err, tokenData) => {
       if (err) {
@@ -420,14 +420,17 @@ app.post("/createpost", async (req, res) => {
           .status(500)
           .json({ success: false, message: "Token verification failed" });
       } else {
-        await postModel.create({
+       const newPost = await postModel.create({
           title,
           image,
+          category,
           description,
           date: new Date(),
           owner: tokenData.id,
         });
-
+        await userModel.findByIdAndUpdate(tokenData.id, {
+          $push: { posts: newPost._id }
+        });
         res.status(200).send("post created");
       }
     });
@@ -443,7 +446,7 @@ app.get("/editpost/:id", async (req, res) => {
 
 app.post("/editpost/:id", async (req, res) => {
   const { id } = req.params;
-  const { title, image, description } = req.body;
+  const { title, image, description,category } = req.body;
 
   try {
     let editPost = await postModel.findById(id);
@@ -451,6 +454,7 @@ app.post("/editpost/:id", async (req, res) => {
       title,
       image,
       description,
+      category,
     });
     await editPost.save();
     res.status(200).send("post updated");
@@ -461,13 +465,36 @@ app.post("/editpost/:id", async (req, res) => {
 
 app.post("/deletepost/:id", async (req, res) => {
   const { id } = req.params;
+  const { token } = req.cookies;
+
+  if (!token) {
+    return res.status(401).send("Unauthorized: No token provided");
+  }
+
   try {
-    await postModel.findOneAndDelete(id);
-    res.status(200).send("post deleted");
+    jwt.verify(token, jwtKey, {}, async (err, tokenData) => {
+      if (err) {
+        return res.status(500).json({ success: false, message: "Token verification failed" });
+      }
+
+      const deletedPost = await postModel.findByIdAndDelete(id);
+
+      if (!deletedPost) {
+        return res.status(404).send("Post not found");
+      }
+
+      await userModel.findByIdAndUpdate(
+        tokenData.id,
+        { $pull: { posts: id } }
+      );
+
+      res.status(200).send("Post deleted and user updated");
+    });
   } catch (error) {
-    res.send(500).send(error.message);
+    res.status(500).send(error.message);
   }
 });
+
 
 app.listen(3000, (err) => {
   if (err) {
