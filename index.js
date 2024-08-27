@@ -63,13 +63,11 @@ app.post("/signup", async (req, res) => {
   const { name, email, location, password } = req.body;
 
   try {
-    // Check if the email is already in use
     let tryEmail = await userModel.findOne({ email });
     if (tryEmail) {
       return res.status(409).json({ message: "Email already in use" });
     }
 
-    // Generate a 6-digit OTP
     const otp = otpGenerator.generate(6, {
       digits: true,
       lowerCaseAlphabets: false,
@@ -77,29 +75,30 @@ app.post("/signup", async (req, res) => {
       specialChars: false,
     });
 
-    // Temporarily store user data and OTP
-    const tempUser = { name, email, location, password, otp };
+    // Create a new user with OTP
+    const newUser = new userModel({
+      name,
+      email,
+      location,
+      password:bcrypt.hashSync(password, 10),
+      otp,
+    });
 
-    // Email options
+    await newUser.save();
+
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: email,
       subject: "Verify Your Email - OTP Code Inside",
-      text: `Dear ${name},\n\nThank you for signing up! To complete your registration, please use the following One-Time Password (OTP) to verify your email address:\n\n🔑 Your OTP Code: ${otp}\n\nPlease enter this code in the verification form within the next 10 minutes to secure your account.\n\nIf you did not initiate this request, please ignore this email.`,
+      text: `Dear ${name},\n\nThank you for signing up! To complete your registration, please use the following One-Time Password (OTP) to verify your email address:\n\n🔑 Your OTP Code: ${otp}\n\nPlease enter this code in the verification form.\n\nIf you did not initiate this request, please ignore this email.`,
     };
 
-    // Send OTP email
     transporter.sendMail(mailOptions, (error, info) => {
       if (error) {
         return res.status(500).json({ message: "Failed to send OTP email" });
       }
-      // Store the temporary user in the session
-      req.session.tempUser = tempUser;
-
-      // Respond to the client after email is sent
       return res.status(201).json({
-        message:
-          "Signup initiated! Please verify your email with the OTP sent.",
+        message: "Signup initiated! Please verify your email with the OTP sent.",
       });
     });
   } catch (error) {
@@ -109,36 +108,37 @@ app.post("/signup", async (req, res) => {
 });
 
 app.post("/verifyotp", async (req, res) => {
-  const { otp } = req.body;
-
-  // Retrieve the temporarily stored user data
-  const tempUser = req.session.tempUser; // Example using session
-
-  if (!tempUser) {
-    return res.status(400).send("No signup process found");
-  }
-
-  if (tempUser.otp !== otp) {
-    return res.status(400).send("Invalid OTP");
-  }
+  const { email, otp } = req.body;
 
   try {
-    // Create the user in the database after successful OTP verification
-    const user = await userModel.create({
-      name: tempUser.name,
-      email: tempUser.email,
-      location: tempUser.location,
-      password: bcrypt.hashSync(tempUser.password, bcryptSalt),
-      isVerified: true,
-    });
+    const user = await userModel.findOne({ email });
 
-    // Clear the temporary user data
-    req.session.tempUser = null;
-    return res
-      .status(201)
-      .json({ message: "Email verified and user created successfully!", user });
+    if (!user) {
+      return res.status(400).send("No user found");
+    }
+
+    if (user.otp !== otp) {
+      return res.status(400).send("Invalid OTP");
+    }
+
+    user.isVerified = true;
+    user.otp = undefined;
+    await user.save();
+
+    jwt.sign(
+      {
+        id: user.id,
+        email: user.email,
+      },
+      jwtKey,
+      {},
+      (err, token) => {
+        if (err) throw err;
+        res.status(200).cookie("token", token).json(user);
+      }
+    );
+
   } catch (error) {
-    console.error(error);
     res.status(500).send("Internal Server Error");
   }
 });
@@ -160,7 +160,7 @@ app.post("/login", async (req, res) => {
         {},
         (err, token) => {
           if (err) throw err;
-          res.cookie("token", token).json(existUser);
+          res.status(200).cookie("token", token).json(existUser);
         }
       );
     } else {
@@ -312,51 +312,45 @@ app.post("/edituser", async (req, res) => {
   }
 });
 
-app.post("/setavatar", upload.single("avatar"), (req, res) => {
-  const file = req.file;
-  const { token } = req.cookies;
-  //check token exists or not
-  if (token) {
-    jwt.verify(token, jwtKey, {}, async (err, tokenData) => {
-      if (err) {
-        res
-          .status(500)
-          .json({ success: false, message: "Token verification failed" });
-      } else {
-        //find user according to the token
+app.post("/setavatar", upload.single("avatar"), async (req, res) => {
+  try {
+    const file = req.file; // Access the uploaded file
+    if (!file) {
+      return res.status(400).json({ success: false, message: "No file uploaded" });
+    }
+
+    const { token } = req.cookies;
+    if (token) {
+      jwt.verify(token, jwtKey, {}, async (err, tokenData) => {
+        if (err) {
+          return res.status(500).json({ success: false, message: "Token verification failed" });
+        }
+
         const user = await userModel.findById(tokenData.id);
-        //if founded user already has avatar image
         if (user.avatar) {
-          //find the avatar image
           const publicId = user.avatar.split("/").pop().split(".")[0];
-          //delete that image from cloudinary
           await cloudinary.uploader.destroy(`user_avatar/${publicId}`);
         }
-        //after deleting existing avatar or create new avatar image
-        cloudinary.uploader
-          .upload_stream({ folder: "user_avatar" }, async (error, result) => {
-            if (error) {
-              return res
-                .status(500)
-                .send("Upload to Cloudinary failed", error.message);
-            } else {
-              user.set({
-                avatar: result.secure_url,
-              });
-              await user.save();
-              res
-                .status(200)
-                .json({ message: "success", url: result.secure_url });
-            }
-          })
-          .end(file.buffer);
-      }
-    });
-  } else {
-    res.status(404).send("Session expired, login again.");
+
+        cloudinary.uploader.upload_stream({ folder: "user_avatar" }, async (error, result) => {
+          if (error) {
+            return res.status(500).send("Upload to Cloudinary failed", error.message);
+          }
+
+          user.set({ avatar: result.secure_url });
+          await user.save();
+          res.status(200).json(result.secure_url);
+        }).end(file.buffer); // Ensure file.buffer is available here
+      });
+    } else {
+      res.status(404).send("Session expired, login again.");
+    }
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ success: false, message: "Server error" });
   }
 });
-
+ 
 app.get("/posts", async (req, res) => {
   const posts = await postModel.find().populate("owner");
   res.status(200).json(posts);
@@ -364,7 +358,7 @@ app.get("/posts", async (req, res) => {
 
 app.get("/readpost/:id", async (req, res)=>{
 const {id} = req.params;
-res.send(await postModel.findById(id));  
+res.send(await postModel.findById(id).populate("owner"));  
 })
 
 app.post("/postimage", upload.single("post"), (req, res) => {
@@ -495,6 +489,9 @@ app.post("/deletepost/:id", async (req, res) => {
   }
 });
 
+app.post("/logout", (req, res) => {
+  res.cookie("token", "").status(200).send('successfully logout');
+})
 
 app.listen(3000, (err) => {
   if (err) {

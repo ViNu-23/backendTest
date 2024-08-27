@@ -32,6 +32,9 @@ const userSchema = mongoose.Schema({
       ref: "post",
     },
   ],
+  otp: {
+    type: String,
+  },
   isVerified: { type: Boolean, default: false },
 
 });
