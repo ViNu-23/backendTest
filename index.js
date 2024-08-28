@@ -371,10 +371,10 @@ app.post("/postimage", upload.single("post"), (req, res) => {
             .status(500)
             .send("Upload to Cloudinary failed", error.message);
         } else {
-          res.status(200).json({ message: "success", url: result.secure_url });
+          res.status(200).json(result.secure_url);
         }
       })
-      .end(file.buffer);
+      .end(file.buffer); 
   } catch (error) {
     res.status(500).send(error.message);
   }
@@ -418,7 +418,7 @@ app.post("/createpost", async (req, res) => {
           title,
           image,
           category,
-          description,
+          description, 
           date: new Date(),
           owner: tokenData.id,
         });
