@@ -3,7 +3,9 @@ require("dotenv").config();
 
 const deployment = `mongodb+srv://vijayvinu46:${process.env.DB_KEY}@cluster0.py4vl.mongodb.net/?retryWrites=true&w=majority&appName=Cluster0`;
 
-mongoose.connect(deployment);
+mongoose.connect(deployment)
+  .then(() => console.log('Connected to MongoDB'))
+  .catch((err) => console.error('Error connecting to MongoDB:', err));
 
 const userSchema = mongoose.Schema({
   avatar: {
