@@ -8,7 +8,7 @@ require("dotenv").config();
 const cloudinary = require("cloudinary").v2;
 const nodemailer = require("nodemailer");
 const otpGenerator = require("otp-generator");
-const session = require("express-session");
+// const session = require("express-session");
 const cors = require('cors');
 
 const userModel = require("./models/userModel");
@@ -20,14 +20,14 @@ const jwtKey = process.env.JWT_KEY;
 app.use(express.json());
 app.use(cookieParser());
 
-app.use(
-  session({
-    secret: process.env.SESSION_SECRET, 
-    resave: false,
-    saveUninitialized: true,
-    cookie: { secure: false }, 
-  })
-);
+// app.use(
+//   session({
+//     secret: process.env.SESSION_SECRET,  
+//     resave: false,
+//     saveUninitialized: true,
+//     cookie: { secure: false }, 
+//   })
+// );
 
 const corsOptions = {
   origin: ['https://blog-frontend-vijay.vercel.app', 'http://localhost:5173'],
