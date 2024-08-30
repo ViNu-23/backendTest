@@ -544,9 +544,6 @@ app.post("/like", async (req, res) => {
       }
 
       const userEmail = tokenData.email; 
-      console.log('like', userEmail);
-      console.log(postId);
-
       const post = await postModel.findById(postId);
 
       if (!post) {
@@ -584,9 +581,6 @@ app.post("/dislike", async (req, res) => {
       }
 
       const userEmail = tokenData.email; 
-      console.log('dislike', userEmail);
-      console.log(postId);
-
       const post = await postModel.findById(postId);
 
       if (!post) {
