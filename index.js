@@ -9,7 +9,7 @@ const cloudinary = require("cloudinary").v2;
 const nodemailer = require("nodemailer");
 const otpGenerator = require("otp-generator");
 // const session = require("express-session");
-const cors = require('cors');
+const cors = require("cors");
 
 const userModel = require("./models/userModel");
 const postModel = require("./models/postModel");
@@ -22,18 +22,18 @@ app.use(cookieParser());
 
 // app.use(
 //   session({
-//     secret: process.env.SESSION_SECRET,  
+//     secret: process.env.SESSION_SECRET,
 //     resave: false,
 //     saveUninitialized: true,
-//     cookie: { secure: false }, 
+//     cookie: { secure: false },
 //   })
 // );
 
 const corsOptions = {
-  origin: ['https://blog-frontend-vijay.vercel.app', 'http://localhost:5173'],
-  methods: 'GET,HEAD,PUT,PATCH,POST,DELETE',
+  origin: ["https://blog-frontend-vijay.vercel.app", "http://localhost:5173"],
+  methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
   credentials: true,
-  optionsSuccessStatus: 204
+  optionsSuccessStatus: 204,
 };
 
 app.use(cors(corsOptions));
@@ -80,7 +80,7 @@ app.post("/signup", async (req, res) => {
       name,
       email,
       location,
-      password:bcrypt.hashSync(password, 10),
+      password: bcrypt.hashSync(password, 10),
       otp,
     });
 
@@ -98,12 +98,39 @@ app.post("/signup", async (req, res) => {
         return res.status(500).json({ message: "Failed to send OTP email" });
       }
       return res.status(201).json({
-        message: "Signup initiated! Please verify your email with the OTP sent.",
+        message:
+          "Signup initiated! Please verify your email with the OTP sent.",
       });
     });
   } catch (error) {
     console.error("Signup Error:", error);
     return res.status(500).json({ message: "Internal Server Error" });
+  }
+});
+
+app.post("/login", async (req, res) => {
+  let { email, password } = req.body;
+  let existUser = await userModel.findOne({ email });
+  if (!existUser) {
+    res.status(404).send("Email not found");
+  } else {
+    let comparePassword = bcrypt.compareSync(password, existUser.password);
+    if (comparePassword) {
+      jwt.sign(
+        {
+          id: existUser.id,
+          email: existUser.email,
+        },
+        jwtKey,
+        {},
+        (err, token) => {
+          if (err) throw err;
+          res.status(200).cookie("token", token).json(existUser);
+        }
+      );
+    } else {
+      res.status(404).send("Incorrect password");
+    }
   }
 });
 
@@ -134,38 +161,15 @@ app.post("/verifyotp", async (req, res) => {
       {},
       (err, token) => {
         if (err) throw err;
-        res.status(200).cookie("token", token).json(user);
+        res.status(200).cookie("token", token).json({
+          message:
+            "OTP validated successfully. You can now reset your password.",
+          user,
+        });
       }
     );
-
   } catch (error) {
     res.status(500).send("Internal Server Error");
-  }
-});
- 
-app.post("/login", async (req, res) => {
-  let { email, password } = req.body;
-  let existUser = await userModel.findOne({ email });
-  if (!existUser) {
-    res.status(404).send("Email not found");
-  } else {
-    let comparePassword = bcrypt.compareSync(password, existUser.password);
-    if (comparePassword) {
-      jwt.sign(
-        {
-          id: existUser.id,
-          email: existUser.email,
-        },
-        jwtKey,
-        {},
-        (err, token) => {
-          if (err) throw err;
-          res.status(200).cookie("token", token).json(existUser);
-        }
-      );
-    } else {
-      res.status(404).send("password miss match");
-    }
   }
 });
 
@@ -174,7 +178,9 @@ app.post("/forgotpassword", async (req, res) => {
 
   const user = await userModel.findOne({ email });
   if (!user) {
-    return res.status(404).json({ message: "User email not found" });
+    return res
+      .status(404)
+      .json({ message: "Email not registered. Create new Account" });
   }
 
   try {
@@ -185,13 +191,9 @@ app.post("/forgotpassword", async (req, res) => {
       specialChars: false,
     });
 
-    // Store the OTP and email temporarily in a session or cache as a single object
-    req.session.resetPasswordData = {
-      otp,
-      email
-    };
+    user.otp = otp;
+    await user.save();
 
-    // Send the OTP to the user's email
     const mailOptions = {
       from: process.env.EMAIL_USER,
       to: email,
@@ -205,7 +207,9 @@ app.post("/forgotpassword", async (req, res) => {
         return res.status(500).json({ message: "Failed to send OTP email" });
       }
 
-      res.status(200).json({ message: "OTP sent to your email. Please verify to reset your password." });
+      res.status(200).json({
+        message: `OTP sent to your ${email}. Please verify to reset your password.`,
+      });
     });
   } catch (error) {
     console.error(error);
@@ -213,44 +217,34 @@ app.post("/forgotpassword", async (req, res) => {
   }
 });
 
-app.post("/validateotp", async (req, res) => {
-  const { otp } = req.body;
-
-  const resetPasswordData = req.session.resetPasswordData;
-
-  if (!resetPasswordData) {
-    return res.status(400).json({ message: "No reset process found" });
-  }
-
-  if (resetPasswordData.otp !== otp) {
-    return res.status(400).json({ message: "Invalid OTP" });
-  }
-
-  res.status(200).json({ message: "OTP validated successfully. You can now reset your password." });
-});
-
 app.post("/setnewpassword", async (req, res) => {
-  const { newPassword } = req.body;
+  const { token } = req.cookies;
+  const { newpassword } = req.body;
 
-  const resetPasswordData = req.session.resetPasswordData;
+  if (token) {
+    jwt.verify(token, jwtKey, {}, async (err, tokenData) => {
+      if (err) {
+        return res.status(401).json({ message: "Invalid or expired token" });
+      }
 
-  if (!resetPasswordData) {
-    return res.status(400).json({ message: "No reset process found" });
-  }
+      try {
+        const user = await userModel.findOne({ email: tokenData.email });
 
-  try {
-    const hashedPassword = bcrypt.hashSync(newPassword, bcryptSalt);
+        if (!user) {
+          return res.status(404).json({ message: "User not found" });
+        }
 
-    // Update the user's password in the database
-    await userModel.updateOne({ email: resetPasswordData.email }, { password: hashedPassword });
+        user.password = await bcrypt.hash(newpassword, 10);
+        await user.save();
 
-    // Clear the session data
-    req.session.resetPasswordData = null;
-
-    res.status(200).json({ message: "Password reset successfully!" });
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ message: "Internal Server Error" });
+        res.status(200).json({ message: "Password reset successfully" });
+      } catch (error) {
+        console.error(error);
+        res.status(500).json({ message: "Internal Server Error" });
+      }
+    });
+  } else {
+    res.status(400).json({ message: "No token provided" });
   }
 });
 
@@ -316,14 +310,18 @@ app.post("/setavatar", upload.single("avatar"), async (req, res) => {
   try {
     const file = req.file; // Access the uploaded file
     if (!file) {
-      return res.status(400).json({ success: false, message: "No file uploaded" });
+      return res
+        .status(400)
+        .json({ success: false, message: "No file uploaded" });
     }
 
     const { token } = req.cookies;
     if (token) {
       jwt.verify(token, jwtKey, {}, async (err, tokenData) => {
         if (err) {
-          return res.status(500).json({ success: false, message: "Token verification failed" });
+          return res
+            .status(500)
+            .json({ success: false, message: "Token verification failed" });
         }
 
         const user = await userModel.findById(tokenData.id);
@@ -332,15 +330,19 @@ app.post("/setavatar", upload.single("avatar"), async (req, res) => {
           await cloudinary.uploader.destroy(`user_avatar/${publicId}`);
         }
 
-        cloudinary.uploader.upload_stream({ folder: "user_avatar" }, async (error, result) => {
-          if (error) {
-            return res.status(500).send("Upload to Cloudinary failed", error.message);
-          }
+        cloudinary.uploader
+          .upload_stream({ folder: "user_avatar" }, async (error, result) => {
+            if (error) {
+              return res
+                .status(500)
+                .send("Upload to Cloudinary failed", error.message);
+            }
 
-          user.set({ avatar: result.secure_url });
-          await user.save();
-          res.status(200).json(result.secure_url);
-        }).end(file.buffer); // Ensure file.buffer is available here
+            user.set({ avatar: result.secure_url });
+            await user.save();
+            res.status(200).json(result.secure_url);
+          })
+          .end(file.buffer); // Ensure file.buffer is available here
       });
     } else {
       res.status(404).send("Session expired, login again.");
@@ -350,16 +352,16 @@ app.post("/setavatar", upload.single("avatar"), async (req, res) => {
     res.status(500).json({ success: false, message: "Server error" });
   }
 });
- 
+
 app.get("/posts", async (req, res) => {
   const posts = await postModel.find().populate("owner");
   res.status(200).json(posts);
 });
 
-app.get("/readpost/:id", async (req, res)=>{
-const {id} = req.params;
-res.send(await postModel.findById(id).populate("owner"));  
-})
+app.get("/readpost/:id", async (req, res) => {
+  const { id } = req.params;
+  res.send(await postModel.findById(id).populate("owner"));
+});
 
 app.post("/postimage", upload.single("post"), (req, res) => {
   const file = req.file;
@@ -374,7 +376,7 @@ app.post("/postimage", upload.single("post"), (req, res) => {
           res.status(200).json(result.secure_url);
         }
       })
-      .end(file.buffer); 
+      .end(file.buffer);
   } catch (error) {
     res.status(500).send(error.message);
   }
@@ -406,7 +408,7 @@ app.post("/deletepostimage", async (req, res) => {
 
 app.post("/createpost", async (req, res) => {
   const { token } = req.cookies;
-  const { title, image, description,category } = req.body;
+  const { title, image, description, category } = req.body;
   if (token) {
     jwt.verify(token, jwtKey, {}, async (err, tokenData) => {
       if (err) {
@@ -414,18 +416,18 @@ app.post("/createpost", async (req, res) => {
           .status(500)
           .json({ success: false, message: "Token verification failed" });
       } else {
-       const newPost = await postModel.create({
+        const newPost = await postModel.create({
           title,
           image,
           category,
-          description, 
+          description,
           date: new Date(),
           owner: tokenData.id,
         });
         await userModel.findByIdAndUpdate(tokenData.id, {
-          $push: { posts: newPost._id }
+          $push: { posts: newPost._id },
         });
-        res.status(200).send("post created");
+        res.status(200).send("Post created successfully");
       }
     });
   } else {
@@ -440,7 +442,7 @@ app.get("/editpost/:id", async (req, res) => {
 
 app.post("/editpost/:id", async (req, res) => {
   const { id } = req.params;
-  const { title, image, description,category } = req.body;
+  const { title, image, description, category } = req.body;
 
   try {
     let editPost = await postModel.findById(id);
@@ -457,8 +459,26 @@ app.post("/editpost/:id", async (req, res) => {
   }
 });
 
-app.post("/deletepost/:id", async (req, res) => {
-  const { id } = req.params;
+app.get("/userpost", (req, res) => {
+  const { token } = req.cookies;
+  if (token) {
+    jwt.verify(token, jwtKey, {}, async (err, tokenData) => {
+      if (err) {
+        res
+          .status(500)
+          .json({ success: false, message: "Token verification failed" });
+      } else {
+        const post = await postModel.find({ owner: tokenData.id });
+        res.status(200).json(post);
+      }
+    });
+  } else {
+    req.status(404).send("Cookies expired login again");
+  }
+});
+
+app.post("/deletepost", async (req, res) => {
+  const { id } = req.body;
   const { token } = req.cookies;
 
   if (!token) {
@@ -468,30 +488,130 @@ app.post("/deletepost/:id", async (req, res) => {
   try {
     jwt.verify(token, jwtKey, {}, async (err, tokenData) => {
       if (err) {
-        return res.status(500).json({ success: false, message: "Token verification failed" });
+        return res
+          .status(500)
+          .json({ success: false, message: "Token verification failed" });
       }
 
-      const deletedPost = await postModel.findByIdAndDelete(id);
+      const postToDelete = await postModel.findById(id);
 
-      if (!deletedPost) {
+      if (!postToDelete) {
         return res.status(404).send("Post not found");
       }
 
-      await userModel.findByIdAndUpdate(
-        tokenData.id,
-        { $pull: { posts: id } }
+      if (postToDelete.owner.toString() !== tokenData.id) {
+        return res
+          .status(403)
+          .send("Forbidden: You are not the owner of this post");
+      }
+
+      const parts = postToDelete.image.split("/");
+      const publicIdWithExtension = parts[parts.length - 1];
+      const publicId = publicIdWithExtension.split(".")[0];
+
+      const result = await cloudinary.uploader.destroy(
+        `post_images/${publicId}`
       );
 
-      res.status(200).send("Post deleted and user updated");
+      if (result.result !== "ok") {
+        return res.status(500).json({ message: "Failed to delete image" });
+      }
+
+      await postModel.findByIdAndDelete(id);
+      await userModel.findByIdAndUpdate(tokenData.id, { $pull: { posts: id } });
+
+      res.status(200).send("Post deleted successfully");
     });
   } catch (error) {
     res.status(500).send(error.message);
   }
 });
 
+app.post("/like", async (req, res) => {
+  const { postId } = req.body;
+  const { token } = req.cookies;
+
+  if (!token) {
+    return res.status(401).send("Unauthorized: No token provided");
+  }
+
+  try {
+    jwt.verify(token, jwtKey, {}, async (err, tokenData) => {
+      if (err) {
+        return res
+          .status(500)
+          .json({ success: false, message: "Token verification failed" });
+      }
+
+      const userEmail = tokenData.email; 
+      console.log('like', userEmail);
+      console.log(postId);
+
+      const post = await postModel.findById(postId);
+
+      if (!post) {
+        return res.status(404).json({ success: false, message: "Post not found" });
+      }
+
+      if (!post.lovedBy.includes(userEmail)) {
+        post.lovedBy.push(userEmail);
+        await post.save();
+      }
+
+      res.status(200).json({ success: true, message: "Post Liked" });
+    });
+
+  } catch (error) {
+    res.status(500).send(error.message);
+  }
+});
+
+
+app.post("/dislike", async (req, res) => {
+  const { postId } = req.body; 
+  const { token } = req.cookies;
+
+  if (!token) {
+    return res.status(401).send("Unauthorized: No token provided");
+  }
+
+  try {
+    jwt.verify(token, jwtKey, {}, async (err, tokenData) => {
+      if (err) {
+        return res
+          .status(500)
+          .json({ success: false, message: "Token verification failed" });
+      }
+
+      const userEmail = tokenData.email; 
+      console.log('dislike', userEmail);
+      console.log(postId);
+
+      const post = await postModel.findById(postId);
+
+      if (!post) {
+        return res.status(404).json({ success: false, message: "Post not found" });
+      }
+
+      if (post.lovedBy.includes(userEmail)) {
+        post.lovedBy = post.lovedBy.filter(email => email !== userEmail);
+        await post.save();
+      }
+
+      res.status(200).json({ success: true, message: "Post Disliked" });
+    });
+
+  } catch (error) {
+    res.status(500).send(error.message);
+  }
+});
+
+
+app.post("/dislike", async (req, res) => {});
+
 app.post("/logout", (req, res) => {
-  res.cookie("token", "").status(200).send('successfully logout');
-})
+  res.cookie("token", "").status(200).send("successfully logout");
+});
 
 app.listen(3000, (err) => {
   if (err) {

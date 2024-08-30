@@ -13,6 +13,11 @@ const postSchema = mongoose.Schema({
     type: mongoose.Schema.Types.ObjectId,
     ref: "user",
   },
+  lovedBy: [
+    {
+      type: String,
+    },
+  ],
 });
 
 module.exports = mongoose.model("post", postSchema);
