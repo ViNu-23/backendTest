@@ -130,6 +130,7 @@ app.post("/login", async (req, res) => {
               maxAge: 7 * 24 * 60 * 60 * 1000,
               httpOnly: true,
               secure: true,
+              sameSite: 'lax'
             })
             .json(existUser);
         }
@@ -173,6 +174,7 @@ app.post("/verifyotp", async (req, res) => {
             maxAge: 7 * 24 * 60 * 60 * 1000,
             httpOnly: true,
             secure: true,
+            sameSite: 'lax'
           })
           .json({
             message:
