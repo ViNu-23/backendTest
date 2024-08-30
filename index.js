@@ -600,9 +600,6 @@ app.post("/dislike", async (req, res) => {
   }
 });
 
-
-app.post("/dislike", async (req, res) => {});
-
 app.post("/logout", (req, res) => {
   res.cookie("token", "").status(200).send("successfully logout");
 });
