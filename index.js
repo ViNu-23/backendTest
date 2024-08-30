@@ -8,7 +8,6 @@ require("dotenv").config();
 const cloudinary = require("cloudinary").v2;
 const nodemailer = require("nodemailer");
 const otpGenerator = require("otp-generator");
-// const session = require("express-session");
 const cors = require("cors");
 
 const userModel = require("./models/userModel");
@@ -20,14 +19,6 @@ const jwtKey = process.env.JWT_KEY;
 app.use(express.json());
 app.use(cookieParser());
 
-// app.use(
-//   session({
-//     secret: process.env.SESSION_SECRET,
-//     resave: false,
-//     saveUninitialized: true,
-//     cookie: { secure: false },
-//   })
-// );
 
 const corsOptions = {
   origin: ["https://blog-frontend-vijay.vercel.app", "http://localhost:5173"],
@@ -45,6 +36,25 @@ const transporter = nodemailer.createTransport({
     pass: process.env.EMAIL_PASS,
   },
 });
+
+const verifyToken = (req, res, next) => {
+  const authHeader = req.headers.authorization;
+
+  if (!authHeader) {
+    return res.status(401).send("Unauthorized: No token provided");
+  }
+
+  const token = authHeader.split(" ")[1];
+
+  jwt.verify(token, jwtKey, (err, tokenData) => {
+    if (err) {
+      return res.status(403).send("Unauthorized: Invalid token");
+    }
+
+    req.user = tokenData; // Attach token data to req object
+    next(); // Proceed to the next middleware or route handler
+  });
+};
 
 cloudinary.config({
   cloud_name: process.env.CLOUDINARY_CLOUD_NAME,
@@ -79,7 +89,7 @@ app.post("/signup", async (req, res) => {
       name,
       email,
       location,
-      password: bcrypt.hashSync(password, 10),
+      password: bcrypt.hashSync(password, bcryptSalt),
       otp,
     });
 
@@ -108,36 +118,30 @@ app.post("/signup", async (req, res) => {
 });
 
 app.post("/login", async (req, res) => {
-  let { email, password } = req.body;
-  let existUser = await userModel.findOne({ email });
-  if (!existUser) {
-    res.status(404).send("Email not found");
-  } else {
-    let comparePassword = bcrypt.compareSync(password, existUser.password);
+  const { email, password } = req.body;
+  try {
+    const existUser = await userModel.findOne({ email });
+
+    if (!existUser) {
+      return res.status(404).send("Email not found");
+    }
+
+    const comparePassword = bcrypt.compareSync(password, existUser.password);
     if (comparePassword) {
       jwt.sign(
-        {
-          id: existUser.id,
-          email: existUser.email,
-        },
+        { id: existUser.id, email: existUser.email },
         jwtKey,
-        {},
+        { expiresIn: "7d" }, // Token valid for 7 days
         (err, token) => {
           if (err) throw err;
-          res
-            .status(200)
-            .cookie("token", token, {
-              maxAge: 7 * 24 * 60 * 60 * 1000, // 1 week
-              httpOnly: true,
-              secure: true, 
-              sameSite: 'Lax', 
-            })
-            .json(existUser);
+          res.status(200).json({ token, user: existUser });
         }
       );
     } else {
-      res.status(404).send("Incorrect password");
+      return res.status(404).send("Incorrect password");
     }
+  } catch (error) {
+    return res.status(500).send(error.message);
   }
 });
 
@@ -149,7 +153,7 @@ app.post("/verifyotp", async (req, res) => {
 
     if (!user) {
       return res.status(400).send("No user found");
-    }
+    } 
 
     if (user.otp !== otp) {
       return res.status(400).send("Invalid OTP");
@@ -160,28 +164,14 @@ app.post("/verifyotp", async (req, res) => {
     await user.save();
 
     jwt.sign(
-      {
-        id: user.id,
-        email: user.email,
-      },
+      { id: user.id, email: user.email },
       jwtKey,
-      {},
+      { expiresIn: "7d" }, 
       (err, token) => {
         if (err) throw err;
-        res
-          .status(200)
-          .cookie("token", token, {
-            maxAge: 7 * 24 * 60 * 60 * 1000,
-            httpOnly: true,
-            secure: true,
-          })
-          .json({
-            message:
-              "OTP validated successfully. You can now reset your password.",
-            user,
-          });
-      }
-    );
+        res.status(200).json({ token, user: user });
+      } )
+
   } catch (error) {
     res.status(500).send("Internal Server Error");
   }
@@ -231,24 +221,18 @@ app.post("/forgotpassword", async (req, res) => {
   }
 });
 
-app.post("/setnewpassword", async (req, res) => {
-  const { token } = req.cookies;
+app.post("/setnewpassword",verifyToken, async (req, res) => {
+  const userEmail = req.user.email
   const { newpassword } = req.body;
 
-  if (token) {
-    jwt.verify(token, jwtKey, {}, async (err, tokenData) => {
-      if (err) {
-        return res.status(401).json({ message: "Invalid or expired token" });
-      }
-
       try {
-        const user = await userModel.findOne({ email: tokenData.email });
+        const user = await userModel.findOne({ email: userEmail });
 
         if (!user) {
           return res.status(404).json({ message: "User not found" });
         }
 
-        user.password = await bcrypt.hash(newpassword, 10);
+        user.password = await bcrypt.hash(newpassword, bcryptSalt);
         await user.save();
 
         res.status(200).json({ message: "Password reset successfully" });
@@ -257,93 +241,83 @@ app.post("/setnewpassword", async (req, res) => {
         res.status(500).json({ message: "Internal Server Error" });
       }
     });
-  } else {
-    res.status(400).json({ message: "No token provided" });
-  }
-});
 
-app.get("/edituser", async (req, res) => {
-  const { token } = req.cookies;
-  if (token) {
-    jwt.verify(token, jwtKey, {}, async (err, tokenData) => {
-      if (err) {
-        res
-          .status(500)
-          .json({ success: false, message: "Token verification failed" });
-      } else {
-        try {
-          const editedUser = await userModel.findById(tokenData.id);
 
-          res.status(200).json(editedUser);
-        } catch (error) {
-          res.status(500).send({ success: false, message: error.message });
-        }
-      }
-    });
-  } else {
-    res.status(404).send("session expired login again");
-  }
-});
+//todo left for feature updates
+// app.get("/edituser", async (req, res) => {
+//   const { token } = req.cookies;
+//   if (token) {
+//     jwt.verify(token, jwtKey, {}, async (err, tokenData) => {
+//       if (err) {
+//         res
+//           .status(500)
+//           .json({ success: false, message: "Token verification failed" });
+//       } else {
+//         try {
+//           const editedUser = await userModel.findById(tokenData.id);
 
-app.post("/edituser", async (req, res) => {
-  const { token } = req.cookies;
-  const { name, email, location, password } = req.body;
+//           res.status(200).json(editedUser);
+//         } catch (error) {
+//           res.status(500).send({ success: false, message: error.message });
+//         }
+//       }
+//     });
+//   } else {
+//     res.status(404).send("session expired login again");
+//   }
+// });
 
-  if (token) {
-    jwt.verify(token, jwtKey, {}, async (err, tokenData) => {
-      if (err) {
-        res
-          .status(500)
-          .json({ success: false, message: "Token verification failed" });
-      } else {
-        try {
-          const editedUser = await userModel.findById(tokenData.id);
-          editedUser.set({
-            name,
-            email,
-            location,
-            password: bcrypt.hashSync(password, bcryptSalt),
-          });
-          editedUser.save();
 
-          res.status(200).json({
-            success: true,
-            message: "user updated",
-          });
-        } catch (error) {
-          res.status(500).send({ success: false, message: error.message });
-        }
-      }
-    });
-  } else {
-    res.status(404).send("session expired login again");
-  }
-});
+//todo left for feature updates
+// app.post("/edituser", async (req, res) => {
+//   const { token } = req.cookies;
+//   const { name, email, location, password } = req.body;
 
-app.post("/setavatar", upload.single("avatar"), async (req, res) => {
+//   if (token) {
+//     jwt.verify(token, jwtKey, {}, async (err, tokenData) => {
+//       if (err) {
+//         res
+//           .status(500)
+//           .json({ success: false, message: "Token verification failed" });
+//       } else {
+//         try {
+//           const editedUser = await userModel.findById(tokenData.id);
+//           editedUser.set({
+//             name,
+//             email,
+//             location,
+//             password: bcrypt.hashSync(password, bcryptSalt),
+//           });
+//           editedUser.save();
+
+//           res.status(200).json({
+//             success: true,
+//             message: "user updated",
+//           });
+//         } catch (error) {
+//           res.status(500).send({ success: false, message: error.message });
+//         }
+//       }
+//     });
+//   } else {
+//     res.status(404).send("session expired login again");
+//   }
+// });
+
+app.post("/setavatar",verifyToken, upload.single("avatar"), async (req, res) => {
+  const userId = req.user.id
   try {
-    const file = req.file; // Access the uploaded file
+    const file = req.file; 
     if (!file) {
       return res
         .status(400)
         .json({ success: false, message: "No file uploaded" });
     }
-
-    const { token } = req.cookies;
-    if (token) {
-      jwt.verify(token, jwtKey, {}, async (err, tokenData) => {
-        if (err) {
-          return res
-            .status(500)
-            .json({ success: false, message: "Token verification failed" });
-        }
-
-        const user = await userModel.findById(tokenData.id);
+        const user = await userModel.findById(userId);
         if (user.avatar) {
           const publicId = user.avatar.split("/").pop().split(".")[0];
           await cloudinary.uploader.destroy(`user_avatar/${publicId}`);
         }
-
         cloudinary.uploader
           .upload_stream({ folder: "user_avatar" }, async (error, result) => {
             if (error) {
@@ -357,10 +331,7 @@ app.post("/setavatar", upload.single("avatar"), async (req, res) => {
             res.status(200).json(result.secure_url);
           })
           .end(file.buffer); // Ensure file.buffer is available here
-      });
-    } else {
-      res.status(404).send("Session expired, login again.");
-    }
+ 
   } catch (error) {
     console.error(error);
     res.status(500).json({ success: false, message: "Server error" });
@@ -420,32 +391,25 @@ app.post("/deletepostimage", async (req, res) => {
   }
 });
 
-app.post("/createpost", async (req, res) => {
-  const { token } = req.cookies;
+app.post("/createpost", verifyToken, async (req, res) => {
+  const userId = req.user.id;
   const { title, image, description, category } = req.body;
-  if (token) {
-    jwt.verify(token, jwtKey, {}, async (err, tokenData) => {
-      if (err) {
-        res
-          .status(500)
-          .json({ success: false, message: "Token verification failed" });
-      } else {
-        const newPost = await postModel.create({
-          title,
-          image,
-          category,
-          description,
-          date: new Date(),
-          owner: tokenData.id,
-        });
-        await userModel.findByIdAndUpdate(tokenData.id, {
-          $push: { posts: newPost._id },
-        });
-        res.status(200).send("Post created successfully");
-      }
+
+  try {
+    const newPost = await postModel.create({
+      title,
+      image,
+      category,
+      description,
+      date: new Date(),
+      owner: userId
     });
-  } else {
-    res.status(404).send("session expired login again");
+    await userModel.findByIdAndUpdate(userId, {
+      $push: { posts: newPost._id },
+    });
+    res.status(200).send("Post created successfully");
+  } catch (error) {
+    res.status(404).send(error.message);
   }
 });
 
@@ -454,7 +418,7 @@ app.get("/editpost/:id", async (req, res) => {
   res.json(await postModel.findById(id));
 });
 
-app.post("/editpost/:id", async (req, res) => {
+app.post("/editpost/:id",verifyToken, async (req, res) => {
   const { id } = req.params;
   const { title, image, description, category } = req.body;
 
@@ -473,150 +437,107 @@ app.post("/editpost/:id", async (req, res) => {
   }
 });
 
-app.get("/userpost", (req, res) => {
-  const { token } = req.cookies;
-  if (token) {
-    jwt.verify(token, jwtKey, {}, async (err, tokenData) => {
-      if (err) {
-        res
-          .status(500)
-          .json({ success: false, message: "Token verification failed" });
-      } else {
-        const post = await postModel.find({ owner: tokenData.id });
-        res.status(200).json(post);
-      }
-    });
-  } else {
-    req.status(404).send("Cookies expired login again");
+app.get("/userpost", verifyToken, async (req, res) => {
+  const userId = req.user.id;
+  try {
+    const post = await postModel.find({ owner: userId });
+    res.status(200).json(post);
+  } catch (error) {
+    req.status(404).send(error.message);
   }
 });
 
-app.post("/deletepost", async (req, res) => {
+app.post("/deletepost", verifyToken, async (req, res) => {
   const { id } = req.body;
-  const { token } = req.cookies;
-
-  if (!token) {
-    return res.status(401).send("Unauthorized: No token provided");
-  }
+  const userId = req.user.id;
 
   try {
-    jwt.verify(token, jwtKey, {}, async (err, tokenData) => {
-      if (err) {
-        return res
-          .status(500)
-          .json({ success: false, message: "Token verification failed" });
-      }
+    const postToDelete = await postModel.findById(id);
 
-      const postToDelete = await postModel.findById(id);
+    if (!postToDelete) {
+      return res.status(404).send("Post not found");
+    }
 
-      if (!postToDelete) {
-        return res.status(404).send("Post not found");
-      }
+    if (postToDelete.owner.toString() !== userId) {
+      return res
+        .status(403)
+        .send("Forbidden: You are not the owner of this post");
+    }
 
-      if (postToDelete.owner.toString() !== tokenData.id) {
-        return res
-          .status(403)
-          .send("Forbidden: You are not the owner of this post");
-      }
+    const parts = postToDelete.image.split("/");
+    const publicIdWithExtension = parts[parts.length - 1];
+    const publicId = publicIdWithExtension.split(".")[0];
 
-      const parts = postToDelete.image.split("/");
-      const publicIdWithExtension = parts[parts.length - 1];
-      const publicId = publicIdWithExtension.split(".")[0];
+    const result = await cloudinary.uploader.destroy(`post_images/${publicId}`);
 
-      const result = await cloudinary.uploader.destroy(
-        `post_images/${publicId}`
-      );
+    if (result.result !== "ok") {
+      return res.status(500).json({ message: "Failed to delete image" });
+    }
 
-      if (result.result !== "ok") {
-        return res.status(500).json({ message: "Failed to delete image" });
-      }
+    await postModel.findByIdAndDelete(id);
+    await userModel.findByIdAndUpdate(userId, { $pull: { posts: id } });
 
-      await postModel.findByIdAndDelete(id);
-      await userModel.findByIdAndUpdate(tokenData.id, { $pull: { posts: id } });
-
-      res.status(200).send("Post deleted successfully");
-    });
+    res.status(200).send("Post deleted successfully");
   } catch (error) {
     res.status(500).send(error.message);
   }
 });
 
-app.post("/like", async (req, res) => {
+app.post("/like", verifyToken, async (req, res) => {
   const { postId } = req.body;
-  const { token } = req.cookies;
-
-  if (!token) {
-    return res.status(401).send("Unauthorized: No token provided");
-  }
+  const userEmail = req.user.email; // Get the email from the verified token
 
   try {
-    jwt.verify(token, jwtKey, {}, async (err, tokenData) => {
-      if (err) {
-        return res
-          .status(500)
-          .json({ success: false, message: "Token verification failed" });
-      }
+    const post = await postModel.findById(postId);
 
-      const userEmail = tokenData.email;
-      const post = await postModel.findById(postId);
+    if (!post) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Post not found" });
+    }
 
-      if (!post) {
-        return res
-          .status(404)
-          .json({ success: false, message: "Post not found" });
-      }
+    if (!post.lovedBy.includes(userEmail)) {
+      post.lovedBy.push(userEmail);
+      await post.save();
+    }
 
-      if (!post.lovedBy.includes(userEmail)) {
-        post.lovedBy.push(userEmail);
-        await post.save();
-      }
-
-      res.status(200).json({ success: true, message: "Post Liked" });
-    });
+    res.status(200).json({ success: true, message: "Post Liked" });
   } catch (error) {
     res.status(500).send(error.message);
   }
 });
 
-app.post("/dislike", async (req, res) => {
+app.post("/dislike", verifyToken, async (req, res) => {
   const { postId } = req.body;
-  const { token } = req.cookies;
-
-  if (!token) {
-    return res.status(401).send("Unauthorized: No token provided");
-  }
+  const userEmail = req.user.email;
 
   try {
-    jwt.verify(token, jwtKey, {}, async (err, tokenData) => {
-      if (err) {
-        return res
-          .status(500)
-          .json({ success: false, message: "Token verification failed" });
-      }
+    const post = await postModel.findById(postId);
 
-      const userEmail = tokenData.email;
-      const post = await postModel.findById(postId);
+    if (!post) {
+      return res
+        .status(404)
+        .json({ success: false, message: "Post not found" });
+    }
+    if (post.lovedBy.includes(userEmail)) {
+      post.lovedBy = post.lovedBy.filter((email) => email !== userEmail);
+      await post.save();
+    }
 
-      if (!post) {
-        return res
-          .status(404)
-          .json({ success: false, message: "Post not found" });
-      }
-
-      if (post.lovedBy.includes(userEmail)) {
-        post.lovedBy = post.lovedBy.filter((email) => email !== userEmail);
-        await post.save();
-      }
-
-      res.status(200).json({ success: true, message: "Post Disliked" });
-    });
+    res.status(200).json({ success: true, message: "Post Disliked" });
   } catch (error) {
     res.status(500).send(error.message);
   }
 });
 
 app.post("/logout", (req, res) => {
-  res.cookie("token", "").status(200).send("successfully logout");
+  res
+    .cookie("token", "", {
+      httpOnly: true,
+      expires: new Date(0),
+    })
+    .status(200)
+    .send("Successfully logged out");
 });
 
 app.listen(3000, (err) => {

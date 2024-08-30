@@ -5,11 +5,11 @@ const deployment = `mongodb+srv://vijayvinu46:${process.env.DB_KEY}@cluster0.py4
 
 mongoose.connect(deployment)
   .then(() => console.log('Connected to MongoDB'))
-  .catch((err) => console.error('Error connecting to MongoDB:', err));
+  .catch((err) => console.error('Error connecting to MongoDB:'));
 
 const userSchema = mongoose.Schema({
   avatar: {
-    default: "https://res.cloudinary.com/dbejvuvsx/image/upload/v1724279320/user_avatar/jwst9a86r2clvk6ezvab.jpg",
+    default: "https://res.cloudinary.com/dbejvuvsx/image/upload/v1724517310/user_avatar/czlgmooz32partrzfyxa.jpg",
     type: String,
   },
   name: {
