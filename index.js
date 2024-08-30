@@ -127,9 +127,10 @@ app.post("/login", async (req, res) => {
           res
             .status(200)
             .cookie("token", token, {
-              maxAge: 7 * 24 * 60 * 60 * 1000,
+              maxAge: 7 * 24 * 60 * 60 * 1000, // 1 week
               httpOnly: true,
-              secure: true,
+              secure: true, 
+              sameSite: 'Lax', 
             })
             .json(existUser);
         }
