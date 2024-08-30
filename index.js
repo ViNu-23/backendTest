@@ -75,7 +75,6 @@ app.post("/signup", async (req, res) => {
       specialChars: false,
     });
 
-    // Create a new user with OTP
     const newUser = new userModel({
       name,
       email,
@@ -125,7 +124,14 @@ app.post("/login", async (req, res) => {
         {},
         (err, token) => {
           if (err) throw err;
-          res.status(200).cookie("token", token).json(existUser);
+          res
+            .status(200)
+            .cookie("token", token, {
+              maxAge: 7 * 24 * 60 * 60 * 1000,
+              httpOnly: true,
+              secure: true,
+            })
+            .json(existUser);
         }
       );
     } else {
@@ -161,11 +167,18 @@ app.post("/verifyotp", async (req, res) => {
       {},
       (err, token) => {
         if (err) throw err;
-        res.status(200).cookie("token", token).json({
-          message:
-            "OTP validated successfully. You can now reset your password.",
-          user,
-        });
+        res
+          .status(200)
+          .cookie("token", token, {
+            maxAge: 7 * 24 * 60 * 60 * 1000,
+            httpOnly: true,
+            secure: true,
+          })
+          .json({
+            message:
+              "OTP validated successfully. You can now reset your password.",
+            user,
+          });
       }
     );
   } catch (error) {
@@ -543,11 +556,13 @@ app.post("/like", async (req, res) => {
           .json({ success: false, message: "Token verification failed" });
       }
 
-      const userEmail = tokenData.email; 
+      const userEmail = tokenData.email;
       const post = await postModel.findById(postId);
 
       if (!post) {
-        return res.status(404).json({ success: false, message: "Post not found" });
+        return res
+          .status(404)
+          .json({ success: false, message: "Post not found" });
       }
 
       if (!post.lovedBy.includes(userEmail)) {
@@ -557,15 +572,13 @@ app.post("/like", async (req, res) => {
 
       res.status(200).json({ success: true, message: "Post Liked" });
     });
-
   } catch (error) {
     res.status(500).send(error.message);
   }
 });
 
-
 app.post("/dislike", async (req, res) => {
-  const { postId } = req.body; 
+  const { postId } = req.body;
   const { token } = req.cookies;
 
   if (!token) {
@@ -580,21 +593,22 @@ app.post("/dislike", async (req, res) => {
           .json({ success: false, message: "Token verification failed" });
       }
 
-      const userEmail = tokenData.email; 
+      const userEmail = tokenData.email;
       const post = await postModel.findById(postId);
 
       if (!post) {
-        return res.status(404).json({ success: false, message: "Post not found" });
+        return res
+          .status(404)
+          .json({ success: false, message: "Post not found" });
       }
 
       if (post.lovedBy.includes(userEmail)) {
-        post.lovedBy = post.lovedBy.filter(email => email !== userEmail);
+        post.lovedBy = post.lovedBy.filter((email) => email !== userEmail);
         await post.save();
       }
 
       res.status(200).json({ success: true, message: "Post Disliked" });
     });
-
   } catch (error) {
     res.status(500).send(error.message);
   }
