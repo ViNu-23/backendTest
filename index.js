@@ -19,7 +19,6 @@ const jwtKey = process.env.JWT_KEY;
 app.use(express.json());
 app.use(cookieParser());
 
-
 const corsOptions = {
   origin: ["https://blog-frontend-vijay.vercel.app", "http://localhost:5173"],
   methods: "GET,HEAD,PUT,PATCH,POST,DELETE",
@@ -153,7 +152,7 @@ app.post("/verifyotp", async (req, res) => {
 
     if (!user) {
       return res.status(400).send("No user found");
-    } 
+    }
 
     if (user.otp !== otp) {
       return res.status(400).send("Invalid OTP");
@@ -166,12 +165,12 @@ app.post("/verifyotp", async (req, res) => {
     jwt.sign(
       { id: user.id, email: user.email },
       jwtKey,
-      { expiresIn: "7d" }, 
+      { expiresIn: "7d" },
       (err, token) => {
         if (err) throw err;
         res.status(200).json({ token, user: user });
-      } )
-
+      }
+    );
   } catch (error) {
     res.status(500).send("Internal Server Error");
   }
@@ -221,27 +220,26 @@ app.post("/forgotpassword", async (req, res) => {
   }
 });
 
-app.post("/setnewpassword",verifyToken, async (req, res) => {
-  const userEmail = req.user.email
+app.post("/setnewpassword", verifyToken, async (req, res) => {
+  const userEmail = req.user.email;
   const { newpassword } = req.body;
 
-      try {
-        const user = await userModel.findOne({ email: userEmail });
+  try {
+    const user = await userModel.findOne({ email: userEmail });
 
-        if (!user) {
-          return res.status(404).json({ message: "User not found" });
-        }
+    if (!user) {
+      return res.status(404).json({ message: "User not found" });
+    }
 
-        user.password = await bcrypt.hash(newpassword, bcryptSalt);
-        await user.save();
+    user.password = await bcrypt.hash(newpassword, bcryptSalt);
+    await user.save();
 
-        res.status(200).json({ message: "Password reset successfully" });
-      } catch (error) {
-        console.error(error);
-        res.status(500).json({ message: "Internal Server Error" });
-      }
-    });
-
+    res.status(200).json({ message: "Password reset successfully" });
+  } catch (error) {
+    console.error(error);
+    res.status(500).json({ message: "Internal Server Error" });
+  }
+});
 
 //todo left for feature updates
 // app.get("/edituser", async (req, res) => {
@@ -266,7 +264,6 @@ app.post("/setnewpassword",verifyToken, async (req, res) => {
 //     res.status(404).send("session expired login again");
 //   }
 // });
-
 
 //todo left for feature updates
 // app.post("/edituser", async (req, res) => {
@@ -304,39 +301,43 @@ app.post("/setnewpassword",verifyToken, async (req, res) => {
 //   }
 // });
 
-app.post("/setavatar",verifyToken, upload.single("avatar"), async (req, res) => {
-  const userId = req.user.id
-  try {
-    const file = req.file; 
-    if (!file) {
-      return res
-        .status(400)
-        .json({ success: false, message: "No file uploaded" });
-    }
-        const user = await userModel.findById(userId);
-        if (user.avatar) {
-          const publicId = user.avatar.split("/").pop().split(".")[0];
-          await cloudinary.uploader.destroy(`user_avatar/${publicId}`);
-        }
-        cloudinary.uploader
-          .upload_stream({ folder: "user_avatar" }, async (error, result) => {
-            if (error) {
-              return res
-                .status(500)
-                .send("Upload to Cloudinary failed", error.message);
-            }
+app.post(
+  "/setavatar",
+  verifyToken,
+  upload.single("avatar"),
+  async (req, res) => {
+    const userId = req.user.id;
+    try {
+      const file = req.file;
+      if (!file) {
+        return res
+          .status(400)
+          .json({ success: false, message: "No file uploaded" });
+      }
+      const user = await userModel.findById(userId);
+      if (user.avatar) {
+        const publicId = user.avatar.split("/").pop().split(".")[0];
+        await cloudinary.uploader.destroy(`user_avatar/${publicId}`);
+      }
+      cloudinary.uploader
+        .upload_stream({ folder: "user_avatar" }, async (error, result) => {
+          if (error) {
+            return res
+              .status(500)
+              .send("Upload to Cloudinary failed", error.message);
+          }
 
-            user.set({ avatar: result.secure_url });
-            await user.save();
-            res.status(200).json(result.secure_url);
-          })
-          .end(file.buffer); // Ensure file.buffer is available here
- 
-  } catch (error) {
-    console.error(error);
-    res.status(500).json({ success: false, message: "Server error" });
+          user.set({ avatar: result.secure_url });
+          await user.save();
+          res.status(200).json(result.secure_url);
+        })
+        .end(file.buffer); // Ensure file.buffer is available here
+    } catch (error) {
+      console.error(error);
+      res.status(500).json({ success: false, message: "Server error" });
+    }
   }
-});
+);
 
 app.get("/posts", async (req, res) => {
   const posts = await postModel.find().populate("owner");
@@ -354,16 +355,14 @@ app.post("/postimage", upload.single("post"), (req, res) => {
     cloudinary.uploader
       .upload_stream({ folder: "post_images" }, async (error, result) => {
         if (error) {
-          return res
-            .status(500)
-            .send("Upload to Cloudinary failed", error.message);
+          return res.status(500).json({ message: "Upload to Cloudinary failed", error });
         } else {
           res.status(200).json(result.secure_url);
         }
       })
-      .end(file.buffer);
+      .end(file.buffer); 
   } catch (error) {
-    res.status(500).send(error.message);
+    return res.status(500).json({ message: error.message });
   }
 });
 
@@ -402,7 +401,7 @@ app.post("/createpost", verifyToken, async (req, res) => {
       category,
       description,
       date: new Date(),
-      owner: userId
+      owner: userId,
     });
     await userModel.findByIdAndUpdate(userId, {
       $push: { posts: newPost._id },
@@ -418,7 +417,7 @@ app.get("/editpost/:id", async (req, res) => {
   res.json(await postModel.findById(id));
 });
 
-app.post("/editpost/:id",verifyToken, async (req, res) => {
+app.post("/editpost/:id", verifyToken, async (req, res) => {
   const { id } = req.params;
   const { title, image, description, category } = req.body;
 
@@ -527,6 +526,22 @@ app.post("/dislike", verifyToken, async (req, res) => {
     res.status(200).json({ success: true, message: "Post Disliked" });
   } catch (error) {
     res.status(500).send(error.message);
+  }
+});
+
+app.get("/publicprofile/:email", async (req, res) => {
+  const { email } = req.params;
+
+  try {
+    const user = await userModel.findOne({ email: email }).populate("posts");
+
+    if (user) {
+      res.status(200).json(user);
+    } else {
+      res.status(404).json({message:"User not found"});
+    }
+  } catch (error) {
+    res.status(404).send("Failed to find user");
   }
 });
 
