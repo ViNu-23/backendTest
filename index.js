@@ -339,10 +339,30 @@ app.post(
   }
 );
 
-app.get("/posts", async (req, res) => {
-  const posts = await postModel.find().populate("owner");
-  res.status(200).json(posts);
+app.get("/posts/:page", async (req, res) => {
+  const page = parseInt(req.params.page, 10) || 1; 
+  const limit = 6; 
+
+  try {
+    const posts = await postModel
+      .find()
+      .populate("owner")
+      .limit(limit)
+      .skip((page - 1) * limit)
+      .exec();
+
+    const count = await postModel.countDocuments();
+
+    res.status(200).json({
+      posts,
+      totalPages: Math.ceil(count / limit),
+      currentPage: page,
+    });
+  } catch (err) {
+    res.status(500).json({ message: err.message });
+  }
 });
+
 
 app.get("/readpost/:id", async (req, res) => {
   const { id } = req.params;
