@@ -484,7 +484,7 @@ app.post("/deletepost", verifyToken, async (req, res) => {
 
 app.post("/like", verifyToken, async (req, res) => {
   const { postId } = req.body;
-  const userEmail = req.user.email; // Get the email from the verified token
+  const userEmail = req.user.email; 
 
   try {
     const post = await postModel.findById(postId);
@@ -544,6 +544,23 @@ app.get("/publicprofile/:email", async (req, res) => {
     res.status(404).send("Failed to find user");
   }
 });
+
+app.get("/userlikedposts", verifyToken, async (req, res) => {
+  const { email } = req.user;
+
+  try {
+    const likedPosts = await postModel.find({ lovedBy: email }).populate("owner");
+
+    if (likedPosts.length === 0) {
+      return res.status(404).json({ success: false, message: "No liked posts found" });
+    }
+
+    res.status(200).json({ success: true, posts: likedPosts });
+  } catch (error) {
+    res.status(500).json({ success: false, message: error.message });
+  }
+});
+
 
 app.post("/logout", (req, res) => {
   res
