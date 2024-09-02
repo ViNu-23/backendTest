@@ -363,6 +363,36 @@ app.get("/posts/:page", async (req, res) => {
   }
 });
 
+app.post('/search', async (req, res) => {
+  const { search, page = 1, limit = 6 } = req.body;
+
+  try {
+    const query = {
+      $or: [
+        { title: { $regex: search, $options: 'i' } },
+        { category: { $regex: search, $options: 'i' } },
+      ],
+    };
+
+    const posts = await postModel.find(query)
+      .populate("owner")
+      .limit(limit)
+      .skip((page - 1) * limit)
+      .exec();
+
+    const count = await postModel.countDocuments(query);
+
+    res.status(200).json({
+      posts,
+      totalPages: Math.ceil(count / limit),
+      currentPage: page,
+    });
+  } catch (error) {
+    console.error('Error searching for posts:', error);
+    res.status(500).json({ message: 'Error searching for posts' });
+  }
+});
+
 
 app.get("/readpost/:id", async (req, res) => {
   const { id } = req.params;
